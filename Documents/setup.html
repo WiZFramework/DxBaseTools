@@ -1,0 +1,78 @@
+<html lang="ja">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<link href="css/main.css" rel="stylesheet" type="text/css">
+<title>DxBaseToolsドキュメント(2016年)</title>
+</head>
+<body>
+<!-- 全体コンテナ　-->
+<div id="container">
+<div id="header">
+<h2>セットアップ</h2>
+</div>
+<!-- コンテンツ　-->
+<div id="contents">
+<h3>ツール作成の準備</h3>
+<br />
+<h4>コンパイラと入力インターフェイス</h4>
+　<b>DxBaseTools</b>は<b>VisuakStdio2013</b>でツール作成を行えます。<b>Windows8.1、Windows10</b>で動作します。<br />
+　もしお持ちでない方は<b>Micrsoft社のサイト</b>から、<b>Visual Studio Community 2013 </b>をダウンロードしてください。<br />
+　また、セットアップの際<b>VisualC++とMFCとWindowsSDK</b>を選択してください。<br />
+<br />
+<h4>ダウンロードと解凍</h4>
+　<b>DxBaseTools</b>は<b>GitHubに公開</b>されています。<br />
+　アドレスは
+<a href="https://github.com/WiZFramework/DxBaseTools" target="_blank">https://github.com/WiZFramework/DxBaseTools</a><br/>
+　です。<br/>
+　<b>上記サイト</b>にアクセスすると、<b>DownloadZIP</b>というボタンがありますので、そこで最新版をダウンロードしてください。解凍すると以下のようなディレクトリ構成になります。
+<div class="box1">
+<pre>
+DxBaseTools
+　　　　Documents
+　　　　Fbx2Bin
+　　　　Libs
+</pre>
+</div>
+　<b>Documentディレクトリ</b>には、このページを含めたドキュメントが入ってます。index.htmlをブラウザで開いてください。<br />
+　<b>Libsディレクトリ</b>には、ライブラリや、<b>DirectXTKライブラリ</b>などが入ってます。<br />
+　<b>Libs/includeとLibs/libディレクトリ</b>には、このあと、Autodesk社の<b>FBX SDK（FBX Software Development Kit）</b>のヘッダとライブラリとコピーしていただきます。（FBXSDKのセットアップで解説します）<br />
+　<b>Fbx2Bin</b>などのディレクトリには、ツールが入ってます。現時点でツールは<b>Fbx2Bin</b>のみです。<br />
+<br />
+<h4>FBXSDKのセットアップ</h4>
+　GitHubからのダウンロードには、<b>FBXモデル</b>の読み込みのためのライブラリが含まれてません。以下の手順でセットアップしたのち、必要なファイルを、<b>DxBaseTools内</b>に配置して利用します。
+<ul class="mokuji">
+<li>Autodesk社の<b>FBX SDK（FBX Software Development Kit）</b>をセットアップします。</li>
+<li><b>FBX SDK</b>は検索エンジンなどで　<b>FBX SDK</b>　などで検索するとたどり着けます。そこからダウンロードのページに移り、<b>VisualStdioS2013</b>に合わせたバージョンのFBX_SDKをダウンロードしてください。<b>（ご使用のコンパイラのバージョンと、FBX_SDKのバージョンが合わないと正常にビルドできませんので注意してください）</b>。</li>
+<li>現在、動作が確認されているFBX_SDKのバージョンは、<b>FBX SDK 2015.1 VS2013</b>、<b>FBX SDK 2016.0 VS2013 </b>、<b>FBX SDK 2016.1 VS2013 </b>です。</li>
+<li>2015年8月時点でのFBX SDKの最新バージョンは<b>FBX SDK 2016.1</b>です。</li>
+<li><b>FBX SDK</b>は実行ファイルになっていますので、そのままセットアップ可能です。</li>
+<li><b>FBX SDKのセットアップ</b>が済んだら、セットアップされたディレクトリ<br />
+（デフォルトで<b>「C:\Program Files\Autodesk\FBX\FBX SDK\2016.1」など</b>にエクスプローラで移動してください。</li>
+<li><b>FBX SDK</b>がセットアップされたディレクトリの<b>「include」</b>ディレクトリ内の、<b>fbxsdk.hというファイルと、fbxsdkディレクトリ</b>を、そのまま、<b>DxBaseToolsを解答したディレクトリ</b>の<b>「Libs\include」内</b>にコピーしてください。</li>
+<li><b>FBX SDK</b>がセットアップされたディレクトリの<b>「lib\vs2013\x86\debug」あるいは「lib\vs2015\x86\debug」</b>ディレクトリ内の、<b>libfbxsdk-mt.libというファイルと、libfbxsdk.pdb</b>を、<b>DxBaseTools</b>を解答したディレクトリの<b>「Libs\lib\Debug」内</b>にコピーしてください。</li>
+<li><b>FBX SDK</b>がセットアップされたディレクトリの<b>「lib\vs2013\x86\release」あるいは「lib\vs2015\x86\release」</b>ディレクトリ内の、<b>libfbxsdk-mt.lib</b>というファイルを、<b>DxBaseTools</b>を解答したディレクトリの<b>「Libs\lib\Release」内</b>にコピーしてください。</li>
+<li>x64（64ビット版）には<b>対応しておりません</b>。必ず<b>x86（32ビット版）</b>をセットアップしてください。</li>
+</ul>
+<br/>
+　以上で、セットアップは完了です。<br />
+<br />
+<h4>ツールのの起動</h4>
+　各ツールディレクトリには<b>ソリューションファイル(.sln)</b>が入っています。Fbx2BinであればFbx2Bin.slnです。<br />
+　<b>ソリューションファイル(.sln)</b>は、<b>VisualStdio2013用のソリューション</b>になっています。<br />
+　また、MFCが使える環境が必須ですので、注意してください。
+<br />
+</div>
+<!-- /コンテンツ　-->
+<hr>
+<!-- フッタ　-->
+<ul class="foot_navi">
+<li><a href="index.html">目次</a></li>
+<li><a href="00_01.html">Fbx2Binへ</a></li>
+</ul>
+<!-- /フッタ　-->
+
+
+</div>
+<!-- /全体コンテナ　-->
+</body>
+</html>

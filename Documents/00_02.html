@@ -1,0 +1,290 @@
+<html lang="ja">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<link href="css/main.css" rel="stylesheet" type="text/css">
+<title>DxBaseToolsドキュメント(2016年)</title>
+</head>
+<body>
+<!-- 全体コンテナ　-->
+<div id="container">
+<div id="header">
+<h2>０．Fbx2Bin</h2>
+</div>
+<!-- コンテンツ　-->
+<div id="contents">
+<h3>００２．Fbx2Binが保存するデータ</h3>
+<br />
+<h4>ブロックヘッダ方式</h4>
+　これはFbx2Binに限らないのですが、バイナリファイルの形式を考えるにあたって、<b>ブロックヘッダ方式</b>をとると意外に簡単に設計ができます。<br />
+　<b>ブロックヘッダ方式</b>というのは、いたって単純です。ファイルを先頭から並べていって、<b>データ内容とデータサイズ</b>という指標（ブロックの内容をあらわすもの）をまず置いてから、続いてデータを並べる方法です。<br />
+　具体的に考えてみましょう。<br />
+　Fbx2Binが保存するデータファイルの先頭には<b>ファイルヘッダ</b>があります。16バイトのファイル内容をしめすテキストブロックで<b>BDV1.0</b>という文字が入っています。この文字列は6バイトですが、16バイトの残りの部分は<b>0</b>で埋められます。<br />
+　このように<b>ファイルヘッダ</b>を置くことで、拡張子に頼らないファイル形式を作成できます。<br />
+　続いて<b>ブロックヘッダ</b>が入ります。ブロックヘッダの構造は以下のような構造体です。
+<div class="box1">
+<pre>
+    struct BlockHeader{
+        BlockType m_Type;
+        UINT m_Size;
+    };
+</pre>
+</div>
+　なんて単純なのでしょう。ようは、そのブロックヘッダ以降に続くデータのタイプとバイト数があるだけです。<b>BlockType</b>というのはenumクラスで
+<div class="box1">
+<pre>
+    enum class BlockType{
+        Vertex,
+        Index,
+        Material,
+        MaterialCount,
+        SkinedVertex,
+        BoneCount,
+        AnimeMatrix,
+        End = 100
+    };
+</pre>
+</div>
+　という内容です。enumなので、それぞれUINT型の数値が入ります。<b>End</b>だけ特別で、ファイルの最後が、この値（100）になっている必要があります。<br />
+<br/>
+<h4>スタティックモデルの構造</h4>
+　まず、スタティックモデルについて説明します。<br />
+　保存するアルゴリズムは、<b>Fbx2Binプロジェクト</b>の<b>FbxMeshObject::SaveStaticMeshBinFile()関数</b>にあります。以下がその本体です。
+<div class="box1">
+<pre>
+    void FbxMeshObject::SaveStaticMeshBinFile(const shared_ptr&lt;FbxMeshObjSaveData>& Data){
+        try{
+            string header;
+            Util::WStoMB(Data->m_Header, header);
+            if (header.size() &lt; 16){
+                header.resize(16, '\0');
+            }
+
+            vector&lt;VertexPositionNormalTexture> vertices;
+            vector&lt;uint16_t> indices;
+            vector&lt;MaterialEx> materials;
+            ReadMesh(vertices, indices, materials, Data->m_Scale);
+
+            wstring filename = Data->m_DataDir + Data->m_BinFileName;
+
+            ofstream ofs(filename, ios::out | ios::binary);
+            ofs.write(header.c_str(), 16);
+            //頂点の保存
+            BlockHeader VerTexHeader;
+            VerTexHeader.m_Type = BlockType::Vertex;
+            VerTexHeader.m_Size = (UINT)vertices.size() * sizeof(VertexPositionNormalTexture);
+            ofs.write((const char*)&VerTexHeader, sizeof(BlockHeader));
+            ofs.write((const char*)&vertices.front(), VerTexHeader.m_Size);
+            //インデックスの保存
+            BlockHeader IndexHeader;
+            IndexHeader.m_Type = BlockType::Index;
+            IndexHeader.m_Size = (UINT)indices.size() * sizeof(uint16_t);
+            ofs.write((const char*)&IndexHeader, sizeof(BlockHeader));
+            ofs.write((const char*)&indices.front(), IndexHeader.m_Size);
+            //マテリアルの保存
+            //マテリアル数のヘッダの保存
+            BlockHeader MaterialCountHeader;
+            MaterialCountHeader.m_Type = BlockType::MaterialCount;
+            MaterialCountHeader.m_Size = (UINT)materials.size();
+            ofs.write((const char*)&MaterialCountHeader, sizeof(BlockHeader));
+            //マテリアル本体の保存
+            wchar_t Drivebuff[_MAX_DRIVE];
+            wchar_t Dirbuff[_MAX_DIR];
+            wchar_t FileNamebuff[_MAX_FNAME];
+            wchar_t Extbuff[_MAX_EXT];
+            BlockHeader MaterialHeader;
+            MaterialHeader.m_Type = BlockType::Material;
+            for (auto mat : materials){
+                wstring TextureFileName = mat.m_Texture->GetTextureFileName();
+                ::ZeroMemory(Drivebuff, sizeof(Drivebuff));
+                ::ZeroMemory(Dirbuff, sizeof(Dirbuff));
+                ::ZeroMemory(FileNamebuff, sizeof(FileNamebuff));
+                ::ZeroMemory(Extbuff, sizeof(Extbuff));
+                //モジュール名から、各ブロックに分ける
+                _wsplitpath_s(TextureFileName.c_str(),
+                    Drivebuff, _MAX_DRIVE,
+                    Dirbuff, _MAX_DIR,
+                    FileNamebuff, _MAX_FNAME,
+                    Extbuff, _MAX_EXT);
+                TextureFileName = FileNamebuff;
+                TextureFileName += Extbuff;
+
+                SaveMaterialEx SaveMat;
+                SaveMat.m_StartIndex = mat.m_StartIndex;
+                SaveMat.m_IndexCount = mat.m_IndexCount;
+                SaveMat.m_Diffuse = mat.m_Diffuse;
+                SaveMat.m_Specular = mat.m_Specular;
+                SaveMat.m_Ambient = mat.m_Ambient;
+                SaveMat.m_Emissive = mat.m_Emissive;
+                UINT TextureStrSize = (TextureFileName.size() + 1) * sizeof(wchar_t);
+                MaterialHeader.m_Size = sizeof(SaveMaterialEx) + TextureStrSize;
+                ofs.write((const char*)&MaterialHeader, sizeof(BlockHeader));
+                ofs.write((const char*)&SaveMat, sizeof(SaveMaterialEx));
+                ofs.write((const char*)TextureFileName.c_str(), TextureStrSize);
+
+            }
+            //End(ヘッダのみ)
+            BlockHeader EndHeader;
+            EndHeader.m_Type = BlockType::End;
+            EndHeader.m_Size = 0;
+            ofs.write((const char*)&EndHeader, sizeof(BlockHeader));
+            ofs.close();
+
+        }
+        catch (...){
+            throw;
+        }
+    }
+</pre>
+</div>
+　上記を見ればわかるように、ファイルヘッダのあと、頂点データを保存しています。
+<div class="box1">
+<pre>
+            //頂点の保存
+            BlockHeader VerTexHeader;
+            VerTexHeader.m_Type = BlockType::Vertex;
+            VerTexHeader.m_Size = (UINT)vertices.size() * sizeof(VertexPositionNormalTexture);
+            ofs.write((const char*)&VerTexHeader, sizeof(BlockHeader));
+            ofs.write((const char*)&vertices.front(), VerTexHeader.m_Size);
+</pre>
+</div>
+　がその部分です。最初に<b>BlockHeader VerTexHeader</b>を宣言定義し、<b>VerTexHeader.m_Type = BlockType::Vertex;</b>とタイプを設定しています。<br/>
+　そしてサイズを<b>VerTexHeader.m_Size = (UINT)vertices.size() * sizeof(VertexPositionNormalTexture);</b><br />
+　と設定しています。つまり頂点データのバイト数です。<br />
+　ブロックヘッダは、<br />
+<b>ofs.write((const char*)&VerTexHeader, sizeof(BlockHeader));</b>とストリームに流し、続いて<br />
+<b>ofs.write((const char*)&vertices.front(), VerTexHeader.m_Size);</b>と頂点配列の先頭から指定したバイト数だけストリームに流します。<br />
+　このように、<b>インデックスバッファ、マテリアル数のヘッダ、マテリアル本体</b>を続いてストリームに流します。最後に、Endヘッダブロックを流します。エンドヘッダブロックは本体がありません。<br />
+　このように設計しておくと、モデルの大きさが変わっても、マテリアル数が増えても柔軟に対応できます。<br />
+<br/>
+<h4>ボーンモデルの構造</h4>
+　ボーンモデル（スキンメッシュ）も同様の方法で書き出しています。実体は<b>FbxMeshObject::SaveSkinedMeshBinFile()関数</b>です。
+<div class="box1">
+<pre>
+    void FbxMeshObject::SaveSkinedMeshBinFile(const shared_ptr&lt;FbxMeshObjSaveData>& Data){
+        try{
+            string header;
+            Util::WStoMB(Data->m_Header, header);
+            if (header.size() &lt; 16){
+                header.resize(16, '\0');
+            }
+
+            vector&lt;VertexPositionNormalTextureSkinning> vertices;
+            vector&lt;uint16_t> indices;
+            vector&lt;MaterialEx> materials;
+            vector&lt;Bone> bones;
+            vector&lt;Matrix4X4> animematrix;
+            ReadSkinMesh(vertices, indices, materials, bones, animematrix,Data->m_Scale,
+                Data);
+
+            wstring filename = Data->m_DataDir + Data->m_BinFileName;
+
+            ofstream ofs(filename, ios::out | ios::binary);
+            ofs.write(header.c_str(), 16);
+            //頂点の保存
+            BlockHeader VerTexHeader;
+            VerTexHeader.m_Type = BlockType::SkinedVertex;
+            VerTexHeader.m_Size = (UINT)vertices.size() 
+                * sizeof(VertexPositionNormalTextureSkinning);
+            ofs.write((const char*)&VerTexHeader, sizeof(BlockHeader));
+            ofs.write((const char*)&vertices.front(), VerTexHeader.m_Size);
+            //インデックスの保存
+            BlockHeader IndexHeader;
+            IndexHeader.m_Type = BlockType::Index;
+            IndexHeader.m_Size = (UINT)indices.size() * sizeof(uint16_t);
+            ofs.write((const char*)&IndexHeader, sizeof(BlockHeader));
+            ofs.write((const char*)&indices.front(), IndexHeader.m_Size);
+            //マテリアルの保存
+            //マテリアル数のヘッダの保存
+            BlockHeader MaterialCountHeader;
+            MaterialCountHeader.m_Type = BlockType::MaterialCount;
+            MaterialCountHeader.m_Size = (UINT)materials.size();
+            ofs.write((const char*)&MaterialCountHeader, sizeof(BlockHeader));
+            //マテリアル本体の保存
+            wchar_t Drivebuff[_MAX_DRIVE];
+            wchar_t Dirbuff[_MAX_DIR];
+            wchar_t FileNamebuff[_MAX_FNAME];
+            wchar_t Extbuff[_MAX_EXT];
+            BlockHeader MaterialHeader;
+            MaterialHeader.m_Type = BlockType::Material;
+            for (auto mat : materials){
+                wstring TextureFileName = mat.m_Texture->GetTextureFileName();
+                ::ZeroMemory(Drivebuff, sizeof(Drivebuff));
+                ::ZeroMemory(Dirbuff, sizeof(Dirbuff));
+                ::ZeroMemory(FileNamebuff, sizeof(FileNamebuff));
+                ::ZeroMemory(Extbuff, sizeof(Extbuff));
+                //モジュール名から、各ブロックに分ける
+                _wsplitpath_s(TextureFileName.c_str(),
+                    Drivebuff, _MAX_DRIVE,
+                    Dirbuff, _MAX_DIR,
+                    FileNamebuff, _MAX_FNAME,
+                    Extbuff, _MAX_EXT);
+                TextureFileName = FileNamebuff;
+                TextureFileName += Extbuff;
+
+                SaveMaterialEx SaveMat;
+                SaveMat.m_StartIndex = mat.m_StartIndex;
+                SaveMat.m_IndexCount = mat.m_IndexCount;
+                SaveMat.m_Diffuse = mat.m_Diffuse;
+                SaveMat.m_Specular = mat.m_Specular;
+                SaveMat.m_Ambient = mat.m_Ambient;
+                SaveMat.m_Emissive = mat.m_Emissive;
+                UINT TextureStrSize = (TextureFileName.size() + 1) * sizeof(wchar_t);
+                MaterialHeader.m_Size = sizeof(SaveMaterialEx) + TextureStrSize;
+                ofs.write((const char*)&MaterialHeader, sizeof(BlockHeader));
+                ofs.write((const char*)&SaveMat, sizeof(SaveMaterialEx));
+                ofs.write((const char*)TextureFileName.c_str(), TextureStrSize);
+
+            }
+            //ボーンカウント（ヘッダのみ）
+            BlockHeader BoneCountHeader;
+            BoneCountHeader.m_Type = BlockType::BoneCount;
+            //ボーンカウントの場合m_Sizeはボーン数になる
+            BoneCountHeader.m_Size = (UINT)bones.size();
+            ofs.write((const char*)&BoneCountHeader, sizeof(BlockHeader));
+
+            //アニメーション行列
+            BlockHeader AnimeMatrixHeader;
+            AnimeMatrixHeader.m_Type = BlockType::AnimeMatrix;
+            AnimeMatrixHeader.m_Size = (UINT)animematrix.size() * sizeof(Matrix4X4);
+            ofs.write((const char*)&AnimeMatrixHeader, sizeof(BlockHeader));
+            ofs.write((const char*)&animematrix.front(), AnimeMatrixHeader.m_Size);
+
+            //End(ヘッダのみ)
+            BlockHeader EndHeader;
+            EndHeader.m_Type = BlockType::End;
+            EndHeader.m_Size = 0;
+            ofs.write((const char*)&EndHeader, sizeof(BlockHeader));
+
+
+            ofs.close();
+        }
+        catch (...){
+            throw;
+        }
+    }
+</pre>
+</div>
+　以上を見ればわかるように、スタティックモデルとの違いは、ボーン数、そしてアニメーション行列の配列を保存しているのがわかります。（頂点の形式もスタティックとは違います）<br />
+<br/>
+<h4>独自データの考え方</h4>
+　このように独自データ形式を考える場合、<b>このデータは汎用的なのか専用的なのか</b>を念頭に入れる必要があります。<br />
+　汎用的なツールであれば、例えばFBXの細かな機能（設定）にも対応する必要があるでしょう。しかし、このデータのようにDxBase2016で使用されることを前提に設計するのであれば、DxBase2016でゲームを作成する側が、構造を理解していればいいので、シンプルにすることができます。<br />
+　そしてその形式が、大変便利で、他ソフトなどでも使用するといった動きが出てきたら、もう少し柔軟に設計すればよいでしょう。そういう意味でも、ブロックヘッダの並び順は固定にしてあります。もし汎用的にするなら、ブロックヘッダの並び順が変わっても読み取れるようにする必要があるでしょう（ゲーム側の問題ですが）。たとえば、頂点データとインデックスデータが並びが逆でもいい形にする必要があるかもしれません。<br />
+<br />
+　また、例えばFbx2Binをカスタマイズしてもっと多機能にすることも可能です。ツール側、ゲーム側の連携を考えながらツールのカスタマイズを行うと、かなり勉強にもなると思います。
+<br />
+</div>
+<!-- /コンテンツ　-->
+<hr>
+<!-- フッタ　-->
+<ul class="foot_navi">
+<li><a href="00_01.html">前ページ</a></li>
+<li><a href="index.html">目次</a></li>
+</ul>
+<!-- /フッタ　-->
+
+
+</div>
+<!-- /全体コンテナ　-->
+</body>
+</html>
